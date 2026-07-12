@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plot Light Study — shadows &amp; sun-hours across the year</title>
+<style>
+  :root{
+    --paper:#FBF9F4; --page:#EAE4D7; --ink:#2C2A25; --ink-soft:#6E695D;
+    --line:#DED7C7; --line-2:#CFC7B4;
+    --ground:#D8D3C6; --ground-2:#CEC8B8;
+    --sun:#C6D89B; --sun-edge:#AEC47C;
+    --shade-plot:#8B9A64; --shadow:rgba(66,63,54,.20);
+    --struct:#CBBDA0; --struct-edge:#B3A385; --wall:#BDB49F; --tree:#6E8F4E; --tree-edge:#557038;
+    --accent:#8A6E3B;
+    --card:#F1EBDD;
+    --ctl-h:32px;
+    --serif:Georgia,'Iowan Old Style','Palatino Linotype','Book Antiqua',serif;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--page);color:var(--ink);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;padding:26px 18px 60px;line-height:1.5}
+  .wrap{max-width:860px;margin:0 auto}
+  .masthead{margin:0 4px 16px}
+  .masthead h1{font-family:var(--serif);font-weight:600;font-size:23px;letter-spacing:-.01em;margin:0 0 4px}
+  .masthead p{margin:0;color:var(--ink-soft);font-size:14px;max-width:60ch}
+  .masthead .coord{font-size:12px;color:var(--ink-soft);margin-top:6px;letter-spacing:.01em}
+
+  .window{background:var(--paper);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 18px 40px -24px rgba(50,45,30,.35),0 2px 0 rgba(255,255,255,.6) inset;overflow:hidden}
+  .titlebar{position:relative;display:flex;align-items:center;gap:12px;min-height:46px;padding:8px 14px;flex-wrap:wrap;
+    border-bottom:1px solid var(--line);background:linear-gradient(#fff,#FAF7F0)}
+  .dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#E8695E}.dots i:nth-child(2){background:#E9B44C}.dots i:nth-child(3){background:#5FB35A}
+  .seg{display:flex;background:#EFE9DC;border-radius:9px;padding:3px}
+  .seg button{border:0;background:transparent;font-family:var(--sans);font-size:13px;color:var(--ink-soft);
+    height:26px;line-height:1;padding:0 14px;border-radius:7px;cursor:pointer;font-weight:500;
+    display:inline-flex;align-items:center;justify-content:center}
+  .seg button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(60,50,30,.14)}
+  .tbspacer{flex:1 1 12px}
+  .locbar{display:flex;align-items:center;gap:6px}
+  .locbar .pin{flex:none;color:var(--ink-soft);display:inline-flex}
+  .locbar input{border:1px solid var(--line-2);border-radius:8px;height:30px;padding:0 10px;background:#fff;
+    font-family:var(--sans);font-size:12.5px;color:var(--ink);width:158px;font-variant-numeric:tabular-nums}
+  .locbar input::placeholder{color:#a9a294}
+  .pinbtn{width:30px;height:30px;border-radius:8px;border:1px solid var(--line-2);background:#fff;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;color:var(--ink);padding:0}
+  .pinbtn:hover{background:#FAF6EE}
+  .pinbtn svg{display:block}
+  .geobar{font-size:11.5px;color:var(--ink-soft);padding:6px 16px 0}
+  .geobar:empty{display:none}
+  .geobar.err{color:#B4483C}
+  .help{margin:2px 0 12px}
+  .help summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:12.5px;list-style:none;display:inline-flex;align-items:center;gap:6px}
+  .help summary::-webkit-details-marker{display:none}
+  .help summary::before{content:'\25B8';font-size:10px;transition:transform .15s}
+  .help[open] summary::before{transform:rotate(90deg)}
+  .help ul{margin:8px 0 2px;padding-left:18px;color:var(--ink-soft);font-family:var(--serif);font-size:13.5px}
+  .help li{margin:5px 0}
+  @media(max-width:560px){ .locbar input{width:132px} .tbspacer{flex-basis:100%} }
+
+  .stage{padding:16px 16px 4px}
+  .mapwrap{position:relative;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--ground)}
+  svg.map{display:block;width:100%;height:auto;touch-action:none}
+  .hint{position:absolute;left:12px;top:10px;background:rgba(251,249,244,.94);border:1px solid var(--line);
+    border-radius:7px;padding:5px 9px;font-size:11px;color:var(--ink-soft);max-width:200px;pointer-events:none}
+  .compass{position:absolute;right:12px;top:10px;pointer-events:none}
+
+  .facerow{display:flex;align-items:center;gap:10px;padding:12px 4px 2px;flex-wrap:wrap}
+  .facelabel{font-size:12.5px;color:var(--ink-soft);font-weight:500}
+  .facerow .seg2{display:inline-flex;background:#EFE9DC;border-radius:8px;padding:3px}
+  .facerow .seg2 button{border:0;background:transparent;font-family:var(--sans);font-size:12.5px;color:var(--ink-soft);
+    height:26px;line-height:1;padding:0 12px;border-radius:6px;cursor:pointer;font-weight:500;
+    display:inline-flex;align-items:center;justify-content:center}
+  .facerow .seg2 button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(60,50,30,.14)}
+  .facehint{font-size:11.5px;color:var(--ink-soft);font-family:var(--serif);font-style:italic}
+  @media(max-width:600px){ .facehint{display:none} }
+
+  .sliderrow{display:flex;align-items:center;gap:12px;padding:14px 4px 6px}
+  .playbtn{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--line-2);background:#fff;
+    cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--ink);padding:0}
+  .playbtn:hover{background:#FAF6EE}
+  .playbtn svg{display:block}
+  .tlabel{flex:none;font-variant-numeric:tabular-nums;font-size:14px;min-width:74px;font-weight:600;text-align:left}
+  .track{position:relative;flex:1;height:34px;cursor:pointer;touch-action:none}
+  .track .rail,.track .fill{position:absolute;top:50%;transform:translateY(-50%);height:4px;border-radius:3px}
+  .track .rail{left:0;right:0;background:var(--line-2)}
+  .track .fill{left:0;background:var(--accent);opacity:.55}
+  .track .knob{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 1px 4px rgba(70,50,20,.3);
+    transform:translate(-50%,-50%);pointer-events:none}
+  .altlabel{flex:none;font-size:13px;color:var(--ink-soft);min-width:58px;text-align:right;font-variant-numeric:tabular-nums}
+
+  .dates{display:flex;flex-wrap:wrap;gap:8px;padding:4px 4px 12px;align-items:center}
+  .chip{border:1px solid var(--line-2);background:#fff;border-radius:999px;height:var(--ctl-h);
+    padding:0 13px;font-size:12.5px;cursor:pointer;color:var(--ink-soft);font-weight:500;
+    display:inline-flex;align-items:center;line-height:1}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .dates input[type=date],.yearbar input[type=date]{border:1px solid var(--line-2);border-radius:8px;height:var(--ctl-h);
+    padding:0 8px;font-family:var(--sans);font-size:12.5px;color:var(--ink);background:#fff}
+  .dsep{width:1px;height:20px;background:var(--line-2);margin:0 2px}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;padding:2px 4px 14px;font-size:12px;color:var(--ink-soft);align-items:center}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:13px;height:13px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.08)}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:2px 0 6px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 8px;text-align:center}
+  .stat b{display:block;font-size:24px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .stat small{display:block;color:var(--ink-soft);font-size:11.5px;margin-top:2px}
+
+  .rec{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:8px 0 4px}
+  .rec .lab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:5px}
+  .rec p{margin:0;font-family:var(--serif);font-size:15px;line-height:1.5}
+
+  .yearbar{display:none;align-items:center;gap:12px;padding:8px 4px 12px;flex-wrap:wrap}
+  .yearbar .sub{display:flex;background:#EFE9DC;border-radius:8px;padding:3px}
+  .yearbar .sub button{border:0;background:transparent;font-size:12.5px;color:var(--ink-soft);height:26px;line-height:1;
+    padding:0 12px;border-radius:6px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center}
+  .yearbar .sub button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(60,50,30,.14)}
+  .colorbar{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-soft)}
+  .cbar{width:150px;height:12px;border-radius:6px;border:1px solid rgba(0,0,0,.08);
+    background:linear-gradient(90deg,#BDB295,#C6D89B,#7C9A3E)}
+
+  .notice{padding:16px 4px 2px}
+  .notice h3{font-family:var(--serif);font-weight:600;font-size:16px;margin:0 0 8px}
+  .notice ul{margin:0;padding-left:18px;color:var(--ink);font-family:var(--serif);font-size:14.5px}
+  .notice li{margin:6px 0}
+
+  .editor{margin-top:18px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .editor h3{font-family:var(--serif);font-size:15px;margin:0 0 4px}
+  .editor .muted{color:var(--ink-soft);font-size:12.5px;margin:0 0 12px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:10px}
+  .btn{border:1px solid var(--line-2);background:#fff;border-radius:8px;height:var(--ctl-h);padding:0 12px;
+    font-size:13px;cursor:pointer;color:var(--ink);font-weight:500;display:inline-flex;align-items:center;line-height:1}
+  .btn:hover{background:#FAF6EE}
+  .field{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--ink-soft)}
+  .field input,.field select{border:1px solid var(--line-2);border-radius:7px;height:var(--ctl-h);padding:0 8px;
+    font-family:var(--sans);font-size:13px;color:var(--ink);width:88px;background:#fff}
+  .selbox{border:1px dashed var(--line-2);border-radius:10px;padding:12px;margin-top:6px;display:none;background:#FCFAF4}
+  .selbox.show{display:block}
+  .selbox .ttl{font-size:13px;font-weight:600;margin-bottom:8px}
+  .slabel{font-size:11.5px;color:var(--ink-soft);display:flex;justify-content:space-between;margin-bottom:2px}
+  input[type=range].rng{width:100%;accent-color:var(--accent)}
+  .del{color:#B4483C;border-color:#e7c9c4}
+  .editdiv{border:0;border-top:1px solid var(--line);margin:16px 0 14px}
+  .geobtn{display:inline-flex;align-items:center;gap:6px}
+  .geobtn svg{display:block}
+  .geomsg{font-size:12px;color:var(--ink-soft);margin:2px 0 0;min-height:16px}
+  .geomsg.err{color:#B4483C}
+  .foot{margin-top:14px;color:var(--ink-soft);font-size:11.5px;text-align:center;font-family:var(--serif)}
+  @media(max-width:600px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .masthead h1{font-size:20px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <h1>How light &amp; shadow move across your plot</h1>
+    <p>A shadow study for one plot, across a whole year. Drag the time slider for any moment; switch to <b>Year</b> to see where the sun actually lands, hour-totalled. Drag the buildings and trees to match your surroundings, or add your own.</p>
+    <div class="coord">Front faces due west (270°) · <span id="tzDisp">UTC+5:30</span></div>
+  </div>
+
+  <div class="window">
+    <div class="titlebar">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="seg" id="modeSeg">
+        <button data-mode="moment" class="on">Moment</button>
+        <button data-mode="year">Year</button>
+      </div>
+      <div class="tbspacer"></div>
+      <div class="locbar">
+        <span class="pin" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 0.6c-2.4 0-4.3 1.9-4.3 4.3 0 3 4.3 7.5 4.3 7.5s4.3-4.5 4.3-7.5c0-2.4-1.9-4.3-4.3-4.3Z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6.5" cy="4.9" r="1.5" fill="currentColor"/></svg></span>
+        <input type="text" id="coordIn" placeholder="lat, lon" spellcheck="false" autocomplete="off" title="Paste coordinates as: latitude, longitude">
+        <button class="pinbtn" id="geoBtn" title="Use my device location" aria-label="Use my device location">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7 0.6v2.2M7 11.2v2.2M0.6 7h2.2M11.2 7h2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="geobar" id="geoMsg"></div>
+
+    <div class="stage">
+      <div class="mapwrap">
+        <div class="hint">Drag any building or tree to reposition it. Tap one to set its height.</div>
+        <div class="compass" id="compass"></div>
+        <svg class="map" id="map" viewBox="0 0 760 560" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+
+      <!-- View orientation (applies to both modes) -->
+      <div class="facerow">
+        <span class="facelabel">You're facing</span>
+        <div class="seg2" id="faceSeg">
+          <button data-a="0" class="on">North</button>
+          <button data-a="90">East</button>
+          <button data-a="180">South</button>
+          <button data-a="270">West</button>
+        </div>
+        <span class="facehint">puts that side at the top, so the map matches your view</span>
+      </div>
+
+      <!-- MOMENT controls -->
+      <div id="momentCtl">
+        <div class="sliderrow">
+          <button class="playbtn" id="play" aria-label="Play day"></button>
+          <div class="tlabel" id="tlabel">—</div>
+          <div class="track" id="track">
+            <div class="rail"></div><div class="fill" id="fill"></div><div class="knob" id="knob"></div>
+          </div>
+          <div class="altlabel" id="altlabel">Alt: —</div>
+        </div>
+        <div class="dates" id="dates">
+          <button class="chip" data-d="12-21">Dec 21 · winter</button>
+          <button class="chip" data-d="03-21">Mar 21 · equinox</button>
+          <button class="chip" data-d="06-21">Jun 21 · summer</button>
+          <button class="chip" data-d="09-21">Sep 21 · equinox</button>
+          <div class="dsep"></div>
+          <input type="date" id="datepick">
+        </div>
+      </div>
+
+      <!-- YEAR controls -->
+      <div class="yearbar" id="yearbar">
+        <div class="sub" id="yearSub">
+          <button data-y="date" class="on">This date</button>
+          <button data-y="annual">Annual average</button>
+        </div>
+        <input type="date" id="datepickY">
+        <div class="colorbar"><span>0h</span><div class="cbar"></div><span id="cbMax">12h</span><span style="margin-left:4px">of direct sun</span></div>
+      </div>
+
+      <div class="legend" id="legend">
+        <span><i class="sw" style="background:var(--sun)"></i>Full sun</span>
+        <span><i class="sw" style="background:var(--shade-plot)"></i>Shade on plot</span>
+        <span><i class="sw" style="background:var(--struct)"></i>Building</span>
+        <span><i class="sw" style="background:var(--wall)"></i>Wall</span>
+        <span><i class="sw" style="background:var(--tree)"></i>Tree</span>
+      </div>
+
+      <div class="stats" id="stats">
+        <div class="stat"><b id="s1">—</b><small id="l1">Plot in sun</small></div>
+        <div class="stat"><b id="s2">—</b><small id="l2">Plot in shade</small></div>
+        <div class="stat"><b id="s3">—</b><small id="l3">Sun elevation</small></div>
+        <div class="stat"><b id="s4">—</b><small id="l4">Sun azimuth</small></div>
+      </div>
+
+      <div class="rec"><div class="lab">Reading the light</div><p id="rec">—</p></div>
+
+      <div class="notice">
+        <h3>What to notice as you scrub the year</h3>
+        <ul id="notice"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDITOR -->
+  <div class="editor">
+    <h3>Location</h3>
+    <p class="muted">Sun angles are computed for the coordinates in the top bar. Paste them from Google Maps, or tap the pin to use your device.</p>
+    <details class="help">
+      <summary>How to get your coordinates from Google Maps</summary>
+      <ul>
+        <li><b>Desktop:</b> right-click your exact spot on the map. The very first row of the menu is the latitude, longitude (e.g. 17.290107, 74.191477) — click it to copy, then paste into the <em>lat, lon</em> box up top.</li>
+        <li><b>Phone / tablet:</b> press and hold on your spot until a red pin drops. The coordinates appear in the search bar at the top (or the info card at the bottom) — tap them to copy, then paste.</li>
+        <li>Aim for the centre of your plot, and zoom in first so the pin lands accurately.</li>
+      </ul>
+    </details>
+    <div class="row">
+      <div class="field">UTC offset (hrs)<input type="number" id="tzIn" min="-12" max="14" step="0.25"></div>
+    </div>
+
+    <hr class="editdiv">
+
+    <h3>Your plot &amp; surroundings</h3>
+    <p class="muted">The pieces on the map are an <b>example</b> — a plot with neighbours on three sides, a low front wall, and a tree. Drag them, resize them, or delete and replace with your real layout. Heights are what matter most for shadows.</p>
+    <div class="row">
+      <div class="field">Plot width (E–W, m)<input type="number" id="pw" min="4" max="80" step="0.5"></div>
+      <div class="field">Plot depth (N–S, m)<input type="number" id="pd" min="4" max="80" step="0.5"></div>
+      <button class="btn" id="addStruct">+ Building</button>
+      <button class="btn" id="addWall">+ Wall</button>
+      <button class="btn" id="addTree">+ Tree</button>
+      <button class="btn" id="reset">Reset example</button>
+    </div>
+    <div class="selbox" id="selbox">
+      <div class="ttl" id="selTtl">Selected</div>
+      <div class="row" id="selFields"></div>
+      <div class="slabel"><span>Height</span><span id="hVal"></span></div>
+      <input type="range" class="rng" id="hRng" min="0.5" max="30" step="0.5">
+      <div class="row" style="margin-top:10px">
+        <button class="btn del" id="delItem">Delete this</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">Sun positions computed with the NOAA solar algorithm for this exact latitude/longitude. Shadows assume flat ground and the heights you set. A modelling aid, not a survey.</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var RAD=Math.PI/180, DEG=180/Math.PI;
+  var LAT=17.2901071, LON=74.1914768, TZ=5.5;
+
+  // ---------- solar ----------
+  function solar(date, hourLocal){
+    var start=Date.UTC(date.y,0,0);
+    var doy=Math.floor((Date.UTC(date.y,date.m,date.d)-start)/86400000);
+    var g=(2*Math.PI/365)*(doy-1+(hourLocal-12)/24);
+    var decl=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)-0.006758*Math.cos(2*g)
+      +0.000907*Math.sin(2*g)-0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
+    var eq=229.18*(0.000075+0.001868*Math.cos(g)-0.032077*Math.sin(g)-0.014615*Math.cos(2*g)-0.040849*Math.sin(2*g));
+    var tst=hourLocal*60+eq+4*LON-60*TZ;
+    var ha=(tst/4)-180;
+    var haR=ha*RAD, latR=LAT*RAD;
+    var cz=Math.sin(latR)*Math.sin(decl)+Math.cos(latR)*Math.cos(decl)*Math.cos(haR);
+    cz=Math.max(-1,Math.min(1,cz));
+    var zen=Math.acos(cz), alt=90-zen*DEG;
+    var den=Math.cos(latR)*Math.sin(zen), az;
+    if(Math.abs(den)<1e-8){ az = alt>0?180:0; }
+    else{
+      var ca=(Math.sin(latR)*Math.cos(zen)-Math.sin(decl))/den;
+      ca=Math.max(-1,Math.min(1,ca));
+      var a=Math.acos(ca)*DEG;
+      az=(ha>0)?(a+180)%360:(540-a)%360;
+    }
+    return {alt:alt, az:az};
+  }
+  function riseSet(date){
+    var rise=null,set=null,prev=-99;
+    for(var h=0;h<=24;h+=1/30){
+      var a=solar(date,h).alt;
+      if(prev<0&&a>=0&&rise===null)rise=h;
+      if(prev>=0&&a<0&&rise!==null&&set===null&&h>6)set=h;
+      prev=a;
+    }
+    if(rise===null)rise=6; if(set===null)set=18;
+    return {rise:rise,set:set};
+  }
+
+  // ---------- state ----------
+  var plot={w:15,d:18};
+  function ex(){ return [
+    {t:'struct',x:0,y:12.5,w:14,d:7,h:9,name:'North neighbour'},
+    {t:'struct',x:0,y:-12.5,w:14,d:7,h:6,name:'South neighbour'},
+    {t:'struct',x:11.5,y:0,w:6,d:16,h:9,name:'Rear (east) house'},
+    {t:'wall',x:-8,y:0,w:0.8,d:16,h:1.8,name:'Front wall'},
+    {t:'tree',x:-3.5,y:5,r:2.4,h:6,name:'Tree'}
+  ]; }
+  var obs=ex();
+  var mode='moment', yearMode='date';
+  var date={y:2026,m:11,d:21};
+  var rs=riseSet(date);
+  var hour=(rs.rise+rs.set)/2;
+  var selIdx=-1, playing=false;
+
+  // ---------- geometry / mapping ----------
+  var VB={w:760,h:560};
+  var pxPerM, cx=VB.w/2, cy=VB.h/2;
+  function recomputeScale(){
+    pxPerM=Math.min(VB.w/(plot.w+26), VB.h/(plot.d+22));
+  }
+  var viewA=0; // facing bearing at screen-top: 0=N, 90=E, 180=S, 270=W
+  function rot(X,Y){ var a=viewA*RAD,c=Math.cos(a),s=Math.sin(a); return {x:c*X-s*Y, y:s*X+c*Y}; }
+  function proj(X,Y){ var r=rot(X,Y); return {x:cx+r.x*pxPerM, y:cy-r.y*pxPerM}; } // world east,north -> screen
+  function toWorld(px,py){ // screen -> world (inverse rotation)
+    var Xr=(px-cx)/pxPerM, Yr=(cy-py)/pxPerM;
+    var a=viewA*RAD,c=Math.cos(a),s=Math.sin(a);
+    return {x:c*Xr+s*Yr, y:-s*Xr+c*Yr};
+  }
+
+  function footprint(o){
+    if(o.t==='tree'){
+      var pts=[],n=10;
+      for(var i=0;i<n;i++){var a=i/n*2*Math.PI;pts.push({x:o.x+o.r*Math.cos(a),y:o.y+o.r*Math.sin(a)});}
+      return pts;
+    }
+    var hw=o.w/2,hd=o.d/2;
+    return [{x:o.x-hw,y:o.y-hd},{x:o.x+hw,y:o.y-hd},{x:o.x+hw,y:o.y+hd},{x:o.x-hw,y:o.y+hd}];
+  }
+  function shadowHullPx(o,sun){
+    var fp=footprint(o), pts=[], ox=0, oy=0;
+    if(sun.alt>0){
+      var L=Math.min(o.h/Math.tan(sun.alt*RAD),300);
+      ox=-Math.sin(sun.az*RAD)*L; oy=-Math.cos(sun.az*RAD)*L; // world offset, away from sun
+    }
+    for(var i=0;i<fp.length;i++){
+      var p=fp[i];
+      pts.push(proj(p.x,p.y));
+      pts.push(proj(p.x+ox,p.y+oy));
+    }
+    return convexHull(pts);
+  }
+  function convexHull(P){
+    P=P.slice().sort(function(a,b){return a.x-b.x||a.y-b.y;});
+    var n=P.length; if(n<3) return P;
+    var cross=function(o,a,b){return (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);};
+    var lo=[];
+    for(var i=0;i<n;i++){while(lo.length>=2&&cross(lo[lo.length-2],lo[lo.length-1],P[i])<=0)lo.pop();lo.push(P[i]);}
+    var up=[];
+    for(var j=n-1;j>=0;j--){while(up.length>=2&&cross(up[up.length-2],up[up.length-1],P[j])<=0)up.pop();up.push(P[j]);}
+    lo.pop();up.pop();return lo.concat(up);
+  }
+  function pip(px,py,poly){
+    var inside=false;
+    for(var i=0,j=poly.length-1;i<poly.length;j=i++){
+      var xi=poly[i].x,yi=poly[i].y,xj=poly[j].x,yj=poly[j].y;
+      if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))inside=!inside;
+    }
+    return inside;
+  }
+  function sunFraction(sun,hulls){
+    if(sun.alt<=0) return 0;
+    var hw=plot.w/2,hd=plot.d/2, step=Math.max(plot.w,plot.d)/24;
+    var lit=0,tot=0;
+    for(var mx=-hw+step/2;mx<hw;mx+=step){
+      for(var my=-hd+step/2;my<hd;my+=step){
+        tot++;
+        var sp=proj(mx,my),px=sp.x,py=sp.y,shaded=false;
+        for(var k=0;k<hulls.length;k++){ if(pip(px,py,hulls[k])){shaded=true;break;} }
+        if(!shaded)lit++;
+      }
+    }
+    return tot?lit/tot:0;
+  }
+
+  // ---------- layered scene ----------
+  var SVG='http://www.w3.org/2000/svg';
+  var map=document.getElementById('map');
+  function el(name,attr){var e=document.createElementNS(SVG,name);for(var k in attr)e.setAttribute(k,attr[k]);return e;}
+  function polyStr(poly){var s='';for(var i=0;i<poly.length;i++){s+=poly[i].x.toFixed(1)+','+poly[i].y.toFixed(1)+' ';}return s;}
+  function clearNode(n){while(n.firstChild)n.removeChild(n.firstChild);}
+
+  var L={}; // layers
+  function buildScene(){
+    clearNode(map);
+    // ground + grid (static)
+    L.ground=el('g',{});
+    L.ground.appendChild(el('rect',{x:0,y:0,width:VB.w,height:VB.h,fill:'var(--ground)'}));
+    var gg=el('g',{stroke:'var(--ground-2)','stroke-width':1,opacity:.5});
+    var stepPx=Math.max(8,Math.round(pxPerM*2));
+    for(var gx=0;gx<VB.w;gx+=stepPx) gg.appendChild(el('line',{x1:gx,y1:0,x2:gx,y2:VB.h}));
+    for(var gy=0;gy<VB.h;gy+=stepPx) gg.appendChild(el('line',{x1:0,y1:gy,x2:VB.w,y2:gy}));
+    L.ground.appendChild(gg);
+    map.appendChild(L.ground);
+
+    // ground shadows (dynamic)
+    L.shadows=el('g',{}); map.appendChild(L.shadows);
+
+    // plot base (polygon of 4 projected corners — rotation-proof)
+    var hw=plot.w/2, hd=plot.d/2;
+    var C={nw:proj(-hw,hd),ne:proj(hw,hd),se:proj(hw,-hd),sw:proj(-hw,-hd)};
+    var plotPts=polyStr([C.nw,C.ne,C.se,C.sw]);
+    L.plotRect=el('polygon',{points:plotPts,fill:'var(--sun)',stroke:'var(--sun-edge)','stroke-width':1.5});
+    map.appendChild(L.plotRect);
+
+    // heatmap cells (year mode)
+    L.heat=el('g',{}); map.appendChild(L.heat);
+
+    // clip for on-plot shade
+    var defs=el('defs',{}), cp=el('clipPath',{id:'plotclip'});
+    cp.appendChild(el('polygon',{points:plotPts}));
+    defs.appendChild(cp); map.appendChild(defs);
+    L.plotShade=el('g',{'clip-path':'url(#plotclip)'}); map.appendChild(L.plotShade);
+
+    // plot outline again (over heat) + front marker (world-west edge: sw->nw)
+    L.outline=el('polygon',{points:plotPts,fill:'none',stroke:'var(--sun-edge)','stroke-width':1.5});
+    map.appendChild(L.outline);
+    var fm=el('g',{});
+    fm.appendChild(el('line',{x1:C.sw.x,y1:C.sw.y,x2:C.nw.x,y2:C.nw.y,stroke:'var(--accent)','stroke-width':3}));
+    var mid={x:(C.sw.x+C.nw.x)/2,y:(C.sw.y+C.nw.y)/2};
+    // outward normal (away from plot centre) to offset the label
+    var ux=mid.x-cx, uy=mid.y-cy, ul=Math.hypot(ux,uy)||1; ux/=ul; uy/=ul;
+    var edgeAng=Math.atan2(C.nw.y-C.sw.y, C.nw.x-C.sw.x)*DEG;
+    if(edgeAng>90||edgeAng<-90)edgeAng+=180; // keep text upright
+    var lx=mid.x+ux*12, ly=mid.y+uy*12;
+    var ft=el('text',{x:lx,y:ly,'text-anchor':'middle','dominant-baseline':'middle','font-family':'var(--sans)','font-size':10,fill:'var(--accent)',
+      transform:'rotate('+edgeAng.toFixed(1)+' '+lx.toFixed(1)+' '+ly.toFixed(1)+')'});
+    ft.textContent='FRONT · W'; fm.appendChild(ft);
+    map.appendChild(fm);
+
+    // sun ray indicator (dynamic)
+    L.sunRay=el('g',{});
+    L.rayLine=el('line',{x1:0,y1:0,x2:0,y2:0,stroke:'#E7B24C','stroke-width':1.5,'stroke-dasharray':'2 4',opacity:.7});
+    L.rayDot=el('circle',{cx:0,cy:0,r:7,fill:'#F1C15A',stroke:'#dfa43e','stroke-width':1});
+    L.sunRay.appendChild(L.rayLine); L.sunRay.appendChild(L.rayDot);
+    map.appendChild(L.sunRay);
+
+    // obstacles
+    L.obs=el('g',{}); map.appendChild(L.obs);
+    fillObstacles();
+    applyModeVisibility();
+  }
+
+  function fillObstacles(){
+    clearNode(L.obs);
+    for(var i=0;i<obs.length;i++){
+      var o=obs[i];
+      var g=el('g',{'data-i':i,style:'cursor:grab'});
+      var ctr=proj(o.x,o.y);
+      if(o.t==='tree'){
+        g.appendChild(el('circle',{cx:ctr.x,cy:ctr.y,r:o.r*pxPerM,fill:'var(--tree)',stroke:'var(--tree-edge)','stroke-width':1.2}));
+      }else{
+        var fill=o.t==='wall'?'var(--wall)':'var(--struct)';
+        var edge=o.t==='wall'?'#a99f88':'var(--struct-edge)';
+        var hw=o.w/2,hd=o.d/2;
+        var pts=polyStr([proj(o.x-hw,o.y+hd),proj(o.x+hw,o.y+hd),proj(o.x+hw,o.y-hd),proj(o.x-hw,o.y-hd)]);
+        g.appendChild(el('polygon',{points:pts,fill:fill,stroke:edge,'stroke-width':1.2}));
+        var t=el('text',{x:ctr.x,y:ctr.y-2,'text-anchor':'middle','font-family':'var(--sans)','font-size':10,fill:'#5c5646','pointer-events':'none'});
+        t.textContent=o.name;
+        var t2=el('text',{x:ctr.x,y:ctr.y+10,'text-anchor':'middle','font-family':'var(--sans)','font-size':9,fill:'#7c7663','pointer-events':'none'});
+        t2.textContent=o.h+' m';
+        g.appendChild(t); g.appendChild(t2);
+      }
+      if(i===selIdx){
+        // bounding box of projected footprint corners
+        var fp=footprint(o), minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+        for(var c=0;c<fp.length;c++){var q=proj(fp[c].x,fp[c].y);if(q.x<minx)minx=q.x;if(q.y<miny)miny=q.y;if(q.x>maxx)maxx=q.x;if(q.y>maxy)maxy=q.y;}
+        g.appendChild(el('rect',{x:minx-4,y:miny-4,width:(maxx-minx)+8,height:(maxy-miny)+8,fill:'none',stroke:'var(--accent)','stroke-width':1.4,'stroke-dasharray':'4 3',rx:4,'pointer-events':'none'}));
+      }
+      L.obs.appendChild(g);
+    }
+  }
+
+  function applyModeVisibility(){
+    var m = mode==='moment';
+    L.shadows.setAttribute('display', m?'inline':'none');
+    L.plotShade.setAttribute('display', m?'inline':'none');
+    L.sunRay.setAttribute('display', m?'inline':'none');
+    L.heat.setAttribute('display', m?'none':'inline');
+    L.plotRect.setAttribute('fill', m?'var(--sun)':'#efeadd');
+  }
+
+  // ---------- dynamic updates (moment) ----------
+  function updateMoment(){
+    var sun=solar(date,hour);
+    var hulls=[];
+    clearNode(L.shadows); clearNode(L.plotShade);
+    if(sun.alt>0){
+      for(var i=0;i<obs.length;i++){
+        var hull=shadowHullPx(obs[i],sun);
+        hulls.push(hull);
+        L.shadows.appendChild(el('polygon',{points:polyStr(hull),fill:'var(--shadow)'}));
+        L.plotShade.appendChild(el('polygon',{points:polyStr(hull),fill:'var(--shade-plot)','fill-opacity':0.85}));
+      }
+      L.plotRect.setAttribute('fill','var(--sun)');
+      var ctr=proj(0,0), cxp=ctr.x, cyp=ctr.y, rr=Math.min(VB.w,VB.h)*0.42;
+      var sd=rot(Math.sin(sun.az*RAD),Math.cos(sun.az*RAD)); // sun direction, rotated
+      var ex2=cxp+sd.x*rr, ey2=cyp-sd.y*rr;
+      L.rayLine.setAttribute('x1',cxp);L.rayLine.setAttribute('y1',cyp);
+      L.rayLine.setAttribute('x2',ex2);L.rayLine.setAttribute('y2',ey2);
+      L.rayDot.setAttribute('cx',ex2);L.rayDot.setAttribute('cy',ey2);
+      L.sunRay.setAttribute('display','inline');
+    } else {
+      L.plotRect.setAttribute('fill','#8f9a7d');
+      L.sunRay.setAttribute('display','none');
+    }
+    // readouts
+    var frac=sunFraction(sun,hulls), pct=Math.round(frac*100);
+    txt('s1',pct+'%'); txt('s2',(100-pct)+'%');
+    txt('s3',(sun.alt>0?sun.alt.toFixed(0):0)+'°'); txt('s4',sun.az.toFixed(0)+'°');
+    txt('l1','Plot in sun'); txt('l2','Plot in shade'); txt('l3','Sun elevation'); txt('l4','Sun azimuth');
+    txt('tlabel',fmtTime(hour));
+    txt('altlabel','Alt: '+(sun.alt>0?sun.alt.toFixed(0):0)+'°');
+    var rec;
+    if(sun.alt<=0){ rec='The sun is below the horizon — the whole plot is in shade. Drag the slider into daylight.'; }
+    else if(sun.alt<10){ rec='Very low sun ('+sun.alt.toFixed(0)+'°): long shadows reach across the plot, so only ~'+pct+'% catches direct light. This retreats fast as the sun climbs.'; }
+    else if(pct>=85){ rec='High, open light — about '+pct+'% of the plot is in direct sun right now. Little is blocked at this hour.'; }
+    else{
+      rec='Around '+pct+'% of the plot is lit. The '+(sun.az<180?'morning':'afternoon')+' sun from the '+(sun.az<180?'eastern':'western')+' sky is being partly blocked — watch which neighbour is throwing the shadow.';
+    }
+    document.getElementById('rec').textContent=rec;
+    // knob (percentage — no layout reads)
+    var t=(hour-rs.rise)/(rs.set-rs.rise);
+    document.getElementById('knob').style.left=(t*100)+'%';
+    document.getElementById('fill').style.width=(t*100)+'%';
+  }
+  function txt(id,v){var n=document.getElementById(id);if(n.textContent!==v)n.textContent=v;}
+
+  // ---------- year mode ----------
+  var yearDirty=true, yearBusy=false;
+  function updateYear(){
+    if(yearBusy)return;
+    yearBusy=true;
+    // paint next frame so the mode switch feels instant
+    requestAnimationFrame(function(){
+      var grid=computeYear();
+      clearNode(L.heat);
+      var hw=plot.w/2, hd=plot.d/2, nx=grid.nx, ny=grid.ny;
+      for(var iy=0;iy<ny;iy++){
+        for(var ix=0;ix<nx;ix++){
+          var hrs=grid.data[iy*nx+ix];
+          var x0=-hw+ix/nx*plot.w, x1=-hw+(ix+1)/nx*plot.w;
+          var y1=hd-iy/ny*plot.d, y0=hd-(iy+1)/ny*plot.d;
+          var pts=polyStr([proj(x0,y1),proj(x1,y1),proj(x1,y0),proj(x0,y0)]);
+          L.heat.appendChild(el('polygon',{points:pts,fill:colorFor(hrs,grid.maxH),'shape-rendering':'crispEdges'}));
+        }
+      }
+      var sum=0,mn=99,mx=0;
+      for(var i=0;i<grid.data.length;i++){var v=grid.data[i];sum+=v;if(v<mn)mn=v;if(v>mx)mx=v;}
+      var avg=grid.data.length?sum/grid.data.length:0;
+      txt('s1',avg.toFixed(1)+'h'); txt('s2',mx.toFixed(1)+'h'); txt('s3',mn.toFixed(1)+'h'); txt('s4',grid.maxH.toFixed(1)+'h');
+      txt('l1', yearMode==='annual'?'Avg sun (per day)':'Avg sun on plot');
+      txt('l2','Sunniest spot'); txt('l3','Shadiest spot'); txt('l4','Daylight length');
+      txt('cbMax',grid.maxH.toFixed(0)+'h');
+      var lab=(yearMode==='annual')?'Averaged over 12 days across the year: ':'For '+dstr(date)+': ';
+      document.getElementById('rec').innerHTML=lab+'the greenest cells collect the most direct sun; the pale ones sit in a neighbour&rsquo;s shadow for much of the day. Put anything sun-hungry — a garden bed, a sit-out, solar panels — where it stays green in <em>both</em> summer and winter.';
+      yearDirty=false; yearBusy=false;
+    });
+  }
+  function computeYear(){
+    var nx=Math.max(6,Math.round(plot.w/0.8)), ny=Math.max(6,Math.round(plot.d/0.8));
+    var data=new Float32Array(nx*ny);
+    var days = (yearMode==='annual')
+      ? Array.from({length:12},function(_,m){return {y:date.y,m:m,d:15};})
+      : [date];
+    // precompute 2D cell screen points once (rotation-correct)
+    var SPx=new Float32Array(nx*ny), SPy=new Float32Array(nx*ny), hw=plot.w/2, hd=plot.d/2;
+    for(var iy=0;iy<ny;iy++)for(var ix=0;ix<nx;ix++){
+      var sp=proj(-hw+(ix+0.5)/nx*plot.w, hd-(iy+0.5)/ny*plot.d);
+      SPx[iy*nx+ix]=sp.x; SPy[iy*nx+ix]=sp.y;
+    }
+    var maxDaylight=0;
+    for(var di=0;di<days.length;di++){
+      var dd=days[di], r=riseSet(dd), dl=r.set-r.rise;
+      if(dl>maxDaylight)maxDaylight=dl;
+      var stepH=dl/40;
+      for(var h=r.rise+stepH/2;h<r.set;h+=stepH){
+        var sun=solar(dd,h); if(sun.alt<=0)continue;
+        var hulls=[];
+        for(var oi=0;oi<obs.length;oi++)hulls.push(shadowHullPx(obs[oi],sun));
+        for(var iy2=0;iy2<ny;iy2++){
+          for(var ix2=0;ix2<nx;ix2++){
+            var idx=iy2*nx+ix2, shaded=false;
+            for(var k=0;k<hulls.length;k++){if(pip(SPx[idx],SPy[idx],hulls[k])){shaded=true;break;}}
+            if(!shaded)data[idx]+=stepH;
+          }
+        }
+      }
+    }
+    if(yearMode==='annual'){for(var j=0;j<data.length;j++)data[j]/=12;}
+    return {nx:nx,ny:ny,data:data,maxH:Math.max(1,maxDaylight)};
+  }
+  function colorFor(hrs,maxH){
+    var t=Math.max(0,Math.min(1,hrs/maxH));
+    var c1=[189,178,149],c2=[198,216,155],c3=[124,154,62],c,u;
+    if(t<0.5){u=t/0.5;c=[0,1,2].map(function(i){return Math.round(c1[i]+(c2[i]-c1[i])*u);});}
+    else{u=(t-0.5)/0.5;c=[0,1,2].map(function(i){return Math.round(c2[i]+(c3[i]-c2[i])*u);});}
+    return 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+  }
+
+  function refresh(){ // route to the right dynamic update
+    if(mode==='moment')updateMoment(); else updateYear();
+  }
+  function geometryChanged(){ // scale/obstacles changed
+    recomputeScale(); buildScene(); yearDirty=true; refresh();
+  }
+
+  // ---------- helpers ----------
+  function fmtTime(h){
+    var hh=Math.floor(h), mm=Math.round((h-hh)*60); if(mm===60){hh++;mm=0;}
+    var ap=hh>=12?'PM':'AM', h12=((hh+11)%12)+1;
+    return h12+':'+(mm<10?'0':'')+mm+' '+ap;
+  }
+  function dstr(d){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return M[d.m]+' '+d.d;}
+
+  // ---------- time slider (rAF-throttled) ----------
+  var track=document.getElementById('track');
+  var sliderRAF=null, pendingX=null, dragSlider=false;
+  function applyPending(){
+    sliderRAF=null;
+    if(pendingX===null)return;
+    var r=track.getBoundingClientRect();
+    var t=Math.max(0,Math.min(1,(pendingX-r.left)/r.width));
+    hour=rs.rise+t*(rs.set-rs.rise);
+    pendingX=null;
+    updateMoment();
+  }
+  function queueSlider(clientX){
+    pendingX=clientX;
+    if(!sliderRAF)sliderRAF=requestAnimationFrame(applyPending);
+  }
+  track.addEventListener('pointerdown',function(e){
+    dragSlider=true; track.setPointerCapture(e.pointerId); queueSlider(e.clientX); e.preventDefault();
+  });
+  track.addEventListener('pointermove',function(e){ if(dragSlider)queueSlider(e.clientX); });
+  track.addEventListener('pointerup',function(){ dragSlider=false; });
+  track.addEventListener('pointercancel',function(){ dragSlider=false; });
+
+  // ---------- play (rAF loop, ~9s per day) ----------
+  var playBtn=document.getElementById('play');
+  var ICON_PLAY='<svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true"><path d="M3.2 1.6 L11 6.5 L3.2 11.4 Z" fill="currentColor"/></svg>';
+  var ICON_PAUSE='<svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true"><rect x="2.4" y="1.8" width="3" height="9.4" rx="1" fill="currentColor"/><rect x="7.6" y="1.8" width="3" height="9.4" rx="1" fill="currentColor"/></svg>';
+  playBtn.innerHTML=ICON_PLAY;
+  var lastTS=0;
+  function playLoop(ts){
+    if(!playing)return;
+    if(lastTS){
+      hour+=(rs.set-rs.rise)*(ts-lastTS)/9000;
+      if(hour>=rs.set)hour=rs.rise;
+      updateMoment();
+    }
+    lastTS=ts;
+    requestAnimationFrame(playLoop);
+  }
+  playBtn.addEventListener('click',function(){
+    playing=!playing;
+    playBtn.innerHTML=playing?ICON_PAUSE:ICON_PLAY;
+    if(playing){lastTS=0;requestAnimationFrame(playLoop);}
+  });
+  function stopPlay(){ if(playing){playing=false;playBtn.innerHTML=ICON_PLAY;} }
+
+  // ---------- date chips ----------
+  function setDate(y,m,d){
+    date={y:y,m:m,d:d}; rs=riseSet(date);
+    if(hour<rs.rise||hour>rs.set)hour=(rs.rise+rs.set)/2;
+    yearDirty=true; highlightChip(); refresh();
+  }
+  function highlightChip(){
+    var key=(date.m+1<10?'0':'')+(date.m+1)+'-'+(date.d<10?'0':'')+date.d;
+    var chips=document.querySelectorAll('#dates .chip');
+    for(var i=0;i<chips.length;i++)chips[i].classList.toggle('on',chips[i].getAttribute('data-d')===key);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#dates .chip'),function(c){
+    c.addEventListener('click',function(){
+      var p=c.getAttribute('data-d').split('-');
+      setDate(2026,parseInt(p[0],10)-1,parseInt(p[1],10));
+      document.getElementById('datepick').value='2026-'+c.getAttribute('data-d');
+    });
+  });
+  document.getElementById('datepick').addEventListener('change',function(e){
+    var p=e.target.value.split('-'); if(p.length<3)return;
+    setDate(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));
+  });
+  document.getElementById('datepickY').addEventListener('change',function(e){
+    var p=e.target.value.split('-'); if(p.length<3)return;
+    date={y:parseInt(p[0],10),m:parseInt(p[1],10)-1,d:parseInt(p[2],10)};
+    rs=riseSet(date); yearDirty=true; highlightChip(); refresh();
+  });
+
+  // ---------- mode toggles ----------
+  Array.prototype.forEach.call(document.querySelectorAll('#modeSeg button'),function(b){
+    b.addEventListener('click',function(){
+      if(mode===b.getAttribute('data-mode'))return;
+      mode=b.getAttribute('data-mode');
+      var bs=document.querySelectorAll('#modeSeg button');
+      for(var i=0;i<bs.length;i++)bs[i].classList.toggle('on',bs[i]===b);
+      document.getElementById('momentCtl').style.display = mode==='moment'?'block':'none';
+      document.getElementById('yearbar').style.display = mode==='year'?'flex':'none';
+      document.getElementById('legend').style.display = mode==='moment'?'flex':'none';
+      stopPlay();
+      if(mode==='year'){
+        document.getElementById('datepickY').value='2026-'+(date.m+1<10?'0':'')+(date.m+1)+'-'+(date.d<10?'0':'')+date.d;
+      }
+      applyModeVisibility(); refresh();
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#yearSub button'),function(b){
+    b.addEventListener('click',function(){
+      yearMode=b.getAttribute('data-y');
+      var bs=document.querySelectorAll('#yearSub button');
+      for(var i=0;i<bs.length;i++)bs[i].classList.toggle('on',bs[i]===b);
+      document.getElementById('datepickY').style.display = yearMode==='date'?'inline-block':'none';
+      yearDirty=true; updateYear();
+    });
+  });
+
+  // ---------- obstacle drag / select (rAF-throttled) ----------
+  var dragObj=null,dragOff={x:0,y:0},moved=false,objRAF=null,pendingPt=null;
+  function svgPt(e){
+    var r=map.getBoundingClientRect();
+    return [(e.clientX-r.left)/r.width*VB.w,(e.clientY-r.top)/r.height*VB.h];
+  }
+  function applyObjMove(){
+    objRAF=null;
+    if(dragObj===null||pendingPt===null)return;
+    var w=toWorld(pendingPt[0],pendingPt[1]);
+    obs[dragObj].x=Math.round((w.x-dragOff.x)*2)/2;
+    obs[dragObj].y=Math.round((w.y-dragOff.y)*2)/2;
+    pendingPt=null;
+    fillObstacles();
+    if(mode==='moment')updateMoment();
+  }
+  map.addEventListener('pointerdown',function(e){
+    var g=e.target.closest?e.target.closest('g[data-i]'):null; if(!g)return;
+    dragObj=parseInt(g.getAttribute('data-i'),10); moved=false;
+    var pt=svgPt(e), w=toWorld(pt[0],pt[1]);
+    dragOff={x:w.x-obs[dragObj].x,y:w.y-obs[dragObj].y};
+    map.setPointerCapture(e.pointerId);
+  });
+  map.addEventListener('pointermove',function(e){
+    if(dragObj===null)return; moved=true; pendingPt=svgPt(e);
+    if(!objRAF)objRAF=requestAnimationFrame(applyObjMove);
+  });
+  map.addEventListener('pointerup',function(){
+    if(dragObj!==null){
+      if(!moved){ selIdx=dragObj; openSel(); }
+      else { yearDirty=true; if(mode==='year')updateYear(); }
+      fillObstacles();
+    }
+    dragObj=null;
+  });
+
+  // ---------- editor ----------
+  function openSel(){
+    var box=document.getElementById('selbox'); var o=obs[selIdx];
+    if(!o){box.classList.remove('show');return;}
+    box.classList.add('show');
+    document.getElementById('selTtl').textContent=(o.name||o.t)+' — '+({struct:'building',wall:'wall',tree:'tree'}[o.t]);
+    var f=document.getElementById('selFields'); f.innerHTML='';
+    function num(lbl,key,min,max,step){
+      var d=document.createElement('div');d.className='field';
+      d.innerHTML='<span>'+lbl+'</span>';
+      var inp=document.createElement('input');inp.type='number';inp.min=min;inp.max=max;inp.step=step;inp.value=o[key];
+      inp.addEventListener('input',function(){o[key]=parseFloat(inp.value)||0;editTouched();});
+      d.appendChild(inp);f.appendChild(d);
+    }
+    if(o.t==='tree'){ num('Radius (m)','r',0.5,12,0.5); }
+    else { num('Width E–W (m)','w',0.5,60,0.5); num('Depth N–S (m)','d',0.5,60,0.5); }
+    var nameF=document.createElement('div');nameF.className='field';nameF.innerHTML='<span>Label</span>';
+    var ni=document.createElement('input');ni.type='text';ni.value=o.name||'';ni.style.width='120px';
+    ni.addEventListener('input',function(){o.name=ni.value;fillObstacles();});nameF.appendChild(ni);f.appendChild(nameF);
+    var hr=document.getElementById('hRng');hr.value=o.h;document.getElementById('hVal').textContent=o.h+' m';
+    hr.oninput=function(){o.h=parseFloat(hr.value);document.getElementById('hVal').textContent=o.h+' m';editTouched();};
+    fillObstacles();
+  }
+  var editTimer=null;
+  function editTouched(){ // live in moment mode, debounced heatmap in year mode
+    fillObstacles(); yearDirty=true;
+    if(mode==='moment'){ updateMoment(); }
+    else { clearTimeout(editTimer); editTimer=setTimeout(updateYear,300); }
+  }
+  document.getElementById('delItem').addEventListener('click',function(){
+    if(selIdx>=0){obs.splice(selIdx,1);selIdx=-1;document.getElementById('selbox').classList.remove('show');geometryChanged();}
+  });
+  function addObs(o){obs.push(o);selIdx=obs.length-1;yearDirty=true;openSel();refresh();}
+  document.getElementById('addStruct').addEventListener('click',function(){addObs({t:'struct',x:0,y:0,w:6,d:6,h:6,name:'Building'});});
+  document.getElementById('addWall').addEventListener('click',function(){addObs({t:'wall',x:0,y:0,w:0.6,d:8,h:2,name:'Wall'});});
+  document.getElementById('addTree').addEventListener('click',function(){addObs({t:'tree',x:0,y:0,r:2,h:5,name:'Tree'});});
+  document.getElementById('reset').addEventListener('click',function(){
+    obs=ex();plot={w:15,d:18};selIdx=-1;
+    document.getElementById('selbox').classList.remove('show');
+    document.getElementById('pw').value=plot.w;document.getElementById('pd').value=plot.d;
+    geometryChanged();
+  });
+  var dimTimer=null;
+  function dimChanged(){
+    clearTimeout(dimTimer);
+    dimTimer=setTimeout(function(){geometryChanged();},120);
+  }
+  document.getElementById('pw').addEventListener('input',function(e){var v=parseFloat(e.target.value);if(v>=4){plot.w=v;dimChanged();}});
+  document.getElementById('pd').addEventListener('input',function(e){var v=parseFloat(e.target.value);if(v>=4){plot.d=v;dimChanged();}});
+
+  // ---------- notice (location-aware) ----------
+  function buildNotice(){
+    var su=solar({y:2026,m:5,d:21},12.4), w=solar({y:2026,m:11,d:21},12.4);
+    var suSide=(su.az>90&&su.az<270)?'south':'north';
+    var wSide=(w.az>90&&w.az<270)?'south':'north';
+    var ul=document.getElementById('notice'); ul.innerHTML='';
+    var items=[];
+    if(suSide!==wSide){
+      items.push('At solar noon the sun sits <b>'+suSide+'</b> of your plot in June (≈'+su.alt.toFixed(0)+'° up) but <b>'+wSide+'</b> in December (≈'+w.alt.toFixed(0)+'°). So midday shadows fall onto the plot from the <em>'+suSide+'</em> side in June and the <em>'+wSide+'</em> side in December — the shade swaps sides across the year.');
+    } else {
+      var opp = suSide==='south'?'north':'south';
+      items.push('At solar noon the sun stays on the <b>'+suSide+'</b> side of your plot all year (≈'+su.alt.toFixed(0)+'° up in June, ≈'+w.alt.toFixed(0)+'° in December), so midday shade always falls toward the <em>'+opp+'</em> — the '+opp+' edge is the shadiest ground.');
+    }
+    items.push('Winter shadows are long and low; in December the noon sun only reaches ≈'+w.alt.toFixed(0)+'°, so tall neighbours block far more of the plot than they do in June (≈'+su.alt.toFixed(0)+'°).');
+    items.push('Switch to the <b>Year</b> tab and compare “This date” for Dec&nbsp;21 vs Jun&nbsp;21 — the bright zone shifts across the plot. The cells that stay green in <em>both</em> are your reliable all-year sun.');
+    items.push('The front faces due west, so late-afternoon sun pours straight in over the low front wall — the western strip is your warmest evening ground.');
+    items.forEach(function(t){var li=document.createElement('li');li.innerHTML=t;ul.appendChild(li);});
+  }
+  buildNotice();
+
+  // ---------- location ----------
+  var tzManual=false;
+  function formatTZ(off){
+    var sign=off<0?'\u2212':'+', a=Math.abs(off), hh=Math.floor(a), mm=Math.round((a-hh)*60);
+    return 'UTC'+sign+hh+':'+(mm<10?'0':'')+mm;
+  }
+  function fmtCoord(){ return (+LAT.toFixed(6))+', '+(+LON.toFixed(6)); }
+  function applyLocation(lat,lon,tz,keepText){
+    if(isFinite(lat))LAT=Math.max(-90,Math.min(90,lat));
+    if(isFinite(lon))LON=Math.max(-180,Math.min(180,lon));
+    if(isFinite(tz))TZ=Math.max(-12,Math.min(14,tz));
+    if(!keepText)document.getElementById('coordIn').value=fmtCoord();
+    document.getElementById('tzIn').value=TZ;
+    document.getElementById('tzDisp').textContent=formatTZ(TZ);
+    rs=riseSet(date);
+    if(hour<rs.rise||hour>rs.set)hour=(rs.rise+rs.set)/2;
+    buildNotice(); yearDirty=true; refresh();
+  }
+  var locTimer=null;
+  function parseCoords(str){
+    if(!str)return {lat:NaN,lon:NaN};
+    var parts=str.split(/[,\s]+/).filter(function(s){return s.length;});
+    return {lat:parseFloat(parts[0]), lon:parseFloat(parts[1])};
+  }
+  function locChanged(){
+    clearTimeout(locTimer);
+    locTimer=setTimeout(function(){
+      var v=parseCoords(document.getElementById('coordIn').value), tz=TZ;
+      if(!isFinite(v.lat)||!isFinite(v.lon))return; // wait for a full pair
+      if(!tzManual)tz=Math.round(v.lon/15); // longitude estimate until overridden
+      applyLocation(v.lat,v.lon,tz,true); // keep the user's typed text as-is
+    },260);
+  }
+  document.getElementById('coordIn').addEventListener('input',locChanged);
+  document.getElementById('coordIn').addEventListener('blur',function(){ // tidy formatting once they leave the field
+    var v=parseCoords(document.getElementById('coordIn').value);
+    if(isFinite(v.lat)&&isFinite(v.lon))document.getElementById('coordIn').value=fmtCoord();
+  });
+  document.getElementById('tzIn').addEventListener('input',function(e){
+    var t=parseFloat(e.target.value); if(!isFinite(t))return;
+    tzManual=true; TZ=Math.max(-12,Math.min(14,t));
+    document.getElementById('tzDisp').textContent=formatTZ(TZ);
+    rs=riseSet(date); if(hour<rs.rise||hour>rs.set)hour=(rs.rise+rs.set)/2;
+    buildNotice(); yearDirty=true; refresh();
+  });
+  document.getElementById('geoBtn').addEventListener('click',function(){
+    var msg=document.getElementById('geoMsg');
+    if(!navigator.geolocation){msg.textContent='Geolocation isn\u2019t available in this browser.';msg.className='geomsg err';return;}
+    msg.textContent='Locating\u2026'; msg.className='geomsg';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var lat=pos.coords.latitude, lon=pos.coords.longitude;
+      var tz=-new Date().getTimezoneOffset()/60; // device offset — accurate, incl. half-hour zones
+      tzManual=true;
+      applyLocation(lat,lon,tz);
+      msg.textContent='Set to your device location ('+lat.toFixed(4)+', '+lon.toFixed(4)+').'; msg.className='geomsg';
+    },function(err){
+      var m='Location unavailable — enter coordinates manually.';
+      if(err&&err.code===1)m='Location permission denied — enter coordinates manually.';
+      msg.textContent=m; msg.className='geomsg err';
+    },{enableHighAccuracy:false,timeout:10000,maximumAge:600000});
+  });
+
+  // ---------- compass (rotates with view; needle to screen-north, letters upright) ----------
+  function bearScreen(B){ var v=rot(Math.sin(B*RAD),Math.cos(B*RAD)); return {x:v.x,y:-v.y}; }
+  function drawCompass(){
+    var C=26, needleR=18, labelR=18.5;
+    var n=bearScreen(0), s=bearScreen(180);
+    function lbl(B,txt,big){var d=bearScreen(B);return '<text x="'+(C+d.x*labelR).toFixed(1)+'" y="'+(C+d.y*labelR+ (big?3:2.4)).toFixed(1)+'" font-size="'+(big?8:7)+'" text-anchor="middle" font-family="Inter,sans-serif" fill="'+(big?'#2C2A25':'#6E695D')+'">'+txt+'</text>';}
+    // needle: a north half (accent) + south half (muted), as two triangles about centre
+    var px=C+n.x*needleR, py=C+n.y*needleR, sx2=C+s.x*needleR, sy2=C+s.y*needleR;
+    var perp={x:-n.y,y:n.x};
+    var b1={x:C+perp.x*3.2,y:C+perp.y*3.2}, b2={x:C-perp.x*3.2,y:C-perp.y*3.2};
+    document.getElementById('compass').innerHTML=
+      '<svg width="52" height="52" viewBox="0 0 52 52">'
+      +'<circle cx="26" cy="26" r="24" fill="rgba(251,249,244,.92)" stroke="#DED7C7"/>'
+      +'<path d="M'+px.toFixed(1)+' '+py.toFixed(1)+' L'+b1.x.toFixed(1)+' '+b1.y.toFixed(1)+' L'+b2.x.toFixed(1)+' '+b2.y.toFixed(1)+' Z" fill="#8A6E3B"/>'
+      +'<path d="M'+sx2.toFixed(1)+' '+sy2.toFixed(1)+' L'+b1.x.toFixed(1)+' '+b1.y.toFixed(1)+' L'+b2.x.toFixed(1)+' '+b2.y.toFixed(1)+' Z" fill="#C7BFAD"/>'
+      +lbl(0,'N',true)+lbl(180,'S')+lbl(90,'E')+lbl(270,'W')
+      +'</svg>';
+  }
+
+  // ---------- view rotation ----------
+  function setView(A){
+    if(viewA===A)return;
+    viewA=A;
+    var bs=document.querySelectorAll('#faceSeg button');
+    for(var i=0;i<bs.length;i++)bs[i].classList.toggle('on',parseInt(bs[i].getAttribute('data-a'),10)===A);
+    buildScene(); drawCompass(); yearDirty=true; refresh();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#faceSeg button'),function(b){
+    b.addEventListener('click',function(){ setView(parseInt(b.getAttribute('data-a'),10)); });
+  });
+
+  // ---------- init ----------
+  document.getElementById('pw').value=plot.w;
+  document.getElementById('pd').value=plot.d;
+  document.getElementById('datepick').value='2026-12-21';
+  document.getElementById('coordIn').value=fmtCoord();
+  document.getElementById('tzIn').value=TZ;
+  document.getElementById('tzDisp').textContent=formatTZ(TZ);
+  recomputeScale();
+  buildScene();
+  drawCompass();
+  highlightChip();
+  updateMoment();
+
+  // test/perf hook (harmless in production)
+  window.__pls={
+    bench:function(n){
+      var t0=performance.now();
+      for(var i=0;i<n;i++){hour=rs.rise+(i/n)*(rs.set-rs.rise);updateMoment();}
+      return (performance.now()-t0)/n;
+    },
+    setHourFrac:function(f){hour=rs.rise+f*(rs.set-rs.rise);updateMoment();}
+  };
+})();
+</script>
+</body>
+</html>
